@@ -23,7 +23,10 @@ jobs:
         pip install -r requirements.txt
         pip install pytest pytest-cov
 
+    
     - name: Run tests with coverage
+      env:
+          PYTHONPATH: .
       run: |
           pytest -v \
             --cov=library_service \
@@ -31,6 +34,7 @@ jobs:
             --cov=routes \
             --cov-report=xml \
             tests/
+      
       
       
 
