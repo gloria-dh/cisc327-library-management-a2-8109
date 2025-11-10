@@ -6,14 +6,16 @@ from unittest.mock import Mock
 # -------------------- STUBS --------------------
 def stub_get_book_by_id(mocker, book_id = 1, title = "A Tale of Two Cities"):
     return mocker.patch.object(
-        lib_service, "get_book_by_id",
+        lib_service, 
+        "get_book_by_id",
         autospec = True,
         return_value = {"id": book_id, "title": title, "author": "Author"}
     )
 
 def stub_calc_late_fee(mocker, amount: float, days_overdue = 6, status = None):
     return mocker.patch.object(
-        lib_service, "calculate_late_fee_for_book",
+        lib_service, 
+        "calculate_late_fee_for_book",
         autospec = True,
         return_value = {
             "fee_amount": float(amount),
@@ -32,11 +34,15 @@ def test_pay_late_fee_valid(mocker):
 
     gateway = Mock(spec=PaymentGateway)
     gateway.process_payment.return_value = (True, f"txn_{patron_id}_", "processed successfully")
-    success, msg = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
+    success, msg, txn = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
 
     assert success is True
-    assert f"txn_{patron_id}_" in msg
-    gateway.process_payment.assert_called_once_with(patron_id, 3.0, "Late fees")
+    assert "Payment successful!" in msg
+    assert txn == f"txn_{patron_id}_"
+    gateway.process_payment.assert_called_once_with(
+        patron_id = patron_id,
+        amount = 3.0,
+        description = "Late fees for 'A Tale of Two Cities'")
 
 # payment declined by gateway
 def test_pay_late_fee_gateway_declined(mocker):
@@ -46,11 +52,15 @@ def test_pay_late_fee_gateway_declined(mocker):
 
     gateway = Mock(spec=PaymentGateway)
     gateway.process_payment.return_value = (False, "", "Payment declined")
-    success, msg = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
+    success, msg, txn = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
 
     assert success is False
     assert "Payment failed" in msg
-    gateway.process_payment.assert_called_once_with(patron_id, 1001.0, "Late fees")
+    assert txn is None
+    gateway.process_payment.assert_called_once_with(
+        patron_id = patron_id, 
+        amount = 1001.0, 
+        description = "Late fees for 'A Tale of Two Cities'")
 
 # invalid patron ID (verify mock NOT called)
 def test_pay_late_fee_invalid_patron_id(mocker):
@@ -59,10 +69,11 @@ def test_pay_late_fee_invalid_patron_id(mocker):
     patron_id = "ABC777"
 
     gateway = Mock(spec=PaymentGateway)
-    success, msg = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
+    success, msg, txn = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
 
     assert success is False
     assert "Invalid patron ID" in msg
+    assert txn is None
     gateway.process_payment.assert_not_called()
 
 # zero late fees (verify mock NOT called)
@@ -72,10 +83,11 @@ def test_pay_late_fee_zero_fee(mocker):
     patron_id = "777777"
 
     gateway = Mock(spec=PaymentGateway)
-    success, msg = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
+    success, msg, txn = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
 
     assert success is False
-    assert "No fee due" in msg
+    assert "No late fees to pay for this book" in msg
+    assert txn is None
     gateway.process_payment.assert_not_called()
 
 # network error exception handling
@@ -86,11 +98,15 @@ def test_pay_late_fee_network_error(mocker):
 
     gateway = Mock(spec=PaymentGateway)
     gateway.process_payment.side_effect = Exception("Network Error")
-    success, msg = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
+    success, msg, txn = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
 
     assert success is False
-    assert "Error processing payment" in msg
-    gateway.process_payment.assert_called_once_with(patron_id, 3.00, "Late fees")
+    assert "Payment processing error" in msg
+    assert txn is None
+    gateway.process_payment.assert_called_once_with(
+        patron_id = patron_id, 
+        amount = 3.00, 
+        description = "Late fees for 'A Tale of Two Cities'")
 
 ## -------------------- refund_late_fee_payment() TESTS --------------------
 
@@ -103,7 +119,7 @@ def test_refund_late_fee_valid(mocker):
     success, msg = lib_service.refund_late_fee_payment(f"txn_{patron_id}_123", 10.5, payment_gateway = gateway)
 
     assert success is True
-    assert "Refund successful" in msg
+    assert "processed successfully" in msg
     gateway.refund_payment.assert_called_once_with(f"txn_{patron_id}_123", 10.5)
 
 # invalid transaction ID rejection
@@ -126,16 +142,16 @@ def test_refund_late_fee_invalid_amounts_neg_zero_high(mocker, amount):
     success, msg = lib_service.refund_late_fee_payment(f"txn_{patron_id}_", amount, payment_gateway = gateway)
 
     assert success is False
-    assert "Invalid refund amount" in msg
+    assert "Refund amount" in msg
     gateway.refund_payment.assert_not_called()
 
 ## -------------------- Additional tests to ensure more than 80% coverage --------------------
 
 # invalid book ID (verify mock NOT called) - pay late fee
-
 def stub_get_book_by_id_not_found(mocker):
     return mocker.patch.object(
-        lib_service, "get_book_by_id",
+        lib_service, 
+        "get_book_by_id",
         autospec = True,
         return_value = None
     )
@@ -146,10 +162,33 @@ def test_pay_late_fee_invalid_book_id(mocker):
     patron_id = "777777"
 
     gateway = Mock(spec=PaymentGateway)
-    success, msg = lib_service.pay_late_fees(patron_id, 5, payment_gateway = gateway)
+    success, msg, txn = lib_service.pay_late_fees(patron_id, 5, payment_gateway = gateway)
 
     assert success is False
     assert "Book not found" in msg
+    assert txn is None
+    gateway.process_payment.assert_not_called()
+
+# invalid fee amount - pay late fee
+def stub_calc_late_fee_none(mocker):
+    return mocker.patch.object(
+        lib_service, 
+        "calculate_late_fee_for_book",
+        autospec = True,
+        return_value = None
+    )
+
+def test_pay_late_fee_invalid_fee_amount(mocker):
+    stub_get_book_by_id(mocker)
+    stub_calc_late_fee_none(mocker) # invalid late fee
+    patron_id = "777777"
+
+    gateway = Mock(spec=PaymentGateway)
+    success, msg, txn = lib_service.pay_late_fees(patron_id, 1, payment_gateway = gateway)
+
+    assert success is False
+    assert "Unable to calculate late fees" in msg
+    assert txn is None
     gateway.process_payment.assert_not_called()
 
 # network error exception handling - refund late fee
@@ -161,7 +200,7 @@ def test_refund_late_fee_network_error(mocker):
     success, msg = lib_service.refund_late_fee_payment(f"txn_{patron_id}_", 10.0, payment_gateway = gateway)
 
     assert success is False
-    assert "Error processing refund" in msg
+    assert "Refund processing error" in msg
     gateway.refund_payment.assert_called_once_with(f"txn_{patron_id}_", 10.0)
 
 # refund declined by gateway - refund late fee
@@ -176,3 +215,14 @@ def test_refund_late_fee_gateway_declined(mocker):
     assert "Refund failed" in msg
     gateway.refund_payment.assert_called_once_with(f"txn_{patron_id}_", 10.0)
 
+# invalid author - add book to catalog (R1)
+def test_add_book_invalid_no_author(mocker):
+    #vars
+    isbn = "1234567890124"
+    total_copies = 5
+
+    # add book to catalog
+    success, message = lib_service.add_book_to_catalog("Test Book", None, isbn, total_copies)
+    
+    assert success == False
+    assert "author is required" in message.lower()
