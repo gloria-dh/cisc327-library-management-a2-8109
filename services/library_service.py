@@ -11,6 +11,7 @@ from database import (
     update_borrow_record_return_date, get_all_books, 
     get_patron_borrowed_books # GD ADDED
 )
+from services.payment_service import PaymentGateway
 
 def add_book_to_catalog(title: str, author: str, isbn: str, total_copies: int) -> Tuple[bool, str]:
     """
@@ -329,3 +330,59 @@ def get_patron_status_report(patron_id: str) -> Dict: # GD ADDED whole function
     }
 
     return entry
+
+# TASK 2.1 
+def pay_late_fees(patron_id: str, book_id: int, payment_gateway: PaymentGateway | None = None) -> Tuple[bool, str]:
+
+    # Validate patron ID
+    if not patron_id or not patron_id.isdigit() or len(patron_id) != 6:
+        return False, "Invalid patron ID. Must be exactly 6 digits."
+    
+    # Check if book exists and is available
+    book = get_book_by_id(book_id)
+    if not book:
+        return False, "Book not found."
+    
+    all_fee_info = calculate_late_fee_for_book(patron_id, book_id)
+    fee = float(all_fee_info.get("fee_amount", 0.0)) # return 0 if missing fee info
+
+    if fee <= 0:
+        return False, "No fee due."
+    
+    # Call gateway is there's a fee due
+    gateway = payment_gateway or PaymentGateway()
+
+    try:
+        success, txn_id, msg = gateway.process_payment(patron_id, fee, "Late fees")
+    except Exception:
+        return False, "Error processing payment."
+    
+    if success:
+        return True, f"Payment succesful. ID: {txn_id}."
+    else:
+        return False, f"Payment failed. Message: {msg}."
+    
+def refund_late_fee_payment(transaction_id: str, amount: float, payment_gateway: PaymentGateway | None = None) -> Tuple[bool, str]:
+
+    # Validate transaction ID
+    if not transaction_id or not transaction_id.startswith("txn_"):
+        return False, "Invalid transaction ID."
+    
+    # Validate refund amount
+    if not(0 < amount <= 15.0):
+        return False, "Invalid refund amount. Must be between $0 and $15."
+    
+    # Call gateway
+    gateway = payment_gateway or PaymentGateway()
+
+    try:
+        success, msg = gateway.refund_payment(transaction_id, amount)
+    except Exception:
+        return False, "Error processing refund."
+    
+    if success:
+        return True, f"Refund successful. Message: {msg}."
+    else:
+        return False, f"Refund failed. Message: {msg}."
+
+

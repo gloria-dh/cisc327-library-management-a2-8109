@@ -1,5 +1,5 @@
 import pytest, database
-from library_service import (
+from services.library_service import (
     calculate_late_fee_for_book
 )
 from datetime import datetime, timedelta
