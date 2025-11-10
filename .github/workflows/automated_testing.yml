@@ -21,19 +21,17 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest pytest-cov
 
     
     - name: Run tests with coverage
       env:
-          PYTHONPATH: .
+        PYTHONPATH: .
       run: |
-          pytest -v \
-            --cov=library_service \
-            --cov=database \
-            --cov=routes \
-            --cov-report=xml \
-            tests/
+        python -m pytest -v \
+          --cov=services \
+          --cov-report=xml \
+          tests/
+      
       
       
       
