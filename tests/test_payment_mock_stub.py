@@ -226,3 +226,83 @@ def test_add_book_invalid_no_author(mocker):
     
     assert success == False
     assert "author is required" in message.lower()
+
+# duplicate isbn - add book to catalog (R1)
+def stub_get_book_by_isbn(mocker):
+    return mocker.patch.object(
+        lib_service, 
+        "get_book_by_isbn",
+        autospec = True,
+        return_value = {
+            "id": 1
+        }
+    )
+
+def test_add_book_duplicate_isbn(mocker):
+    #vars
+    isbn = "1234567890124"
+    total_copies = 1
+    stub_get_book_by_isbn(mocker)
+    # add book to catalog
+    success, message = lib_service.add_book_to_catalog("Test Book", "Author", isbn, total_copies)
+    
+    assert success == False
+    assert "already exists" in message.lower()
+
+# database error - add book to catalog (R1)
+def stub_get_book_by_isbn_none(mocker):
+    return mocker.patch.object(
+        lib_service, 
+        "get_book_by_isbn",
+        autospec = True,
+        return_value = None
+    )
+
+def stub_insert_book(mocker):
+    return mocker.patch.object(
+        lib_service, 
+        "insert_book",
+        autospec = True,
+        return_value = False
+    )
+
+def test_add_book_database_error(mocker):
+     #vars
+    isbn = "1234567890124"
+    total_copies = 1
+    stub_get_book_by_isbn_none(mocker)
+    stub_insert_book(mocker)
+
+    # add book to catalog
+    success, message = lib_service.add_book_to_catalog("Test Book", "Author", isbn, total_copies)
+    
+    assert success == False
+    assert "database error" in message.lower()
+
+# invalid patron ID - calc late fee
+def test_calc_late_fee_invalid_patron(mocker):
+    result = lib_service.calculate_late_fee_for_book("ABC123", 1)
+    assert result["status"] == "Invalid patron ID"
+
+# book not found - calc late fee
+def test_calc_late_fee_book_not_found(mocker):
+    stub_get_book_by_id_not_found(mocker)
+    result = lib_service.calculate_late_fee_for_book("123456", 1)
+
+    assert result["fee_amount"] == 0.0
+    assert result["days_overdue"] == 0
+    assert result["status"] == "Book not found."
+
+# invalid search type - search books in catalog
+def test_search_invalid_types(mocker):
+    assert lib_service.search_books_in_catalog(123, "title") == []
+
+# invalid empty search term - search books in catalog
+def test_search_empty_term(mocker):
+    assert lib_service.search_books_in_catalog("   ", "title") == []
+
+# invalid patron - return book by patron
+def test_return_book_invalid_patron(mocker):
+    success, msg = lib_service.return_book_by_patron("ABC", 1)
+    assert not success
+    assert "Invalid patron ID" in msg
