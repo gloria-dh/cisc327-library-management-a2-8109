@@ -1,5 +1,12 @@
 from playwright.sync_api import Page, expect
 import random, database
+import os
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    os.getenv("CI") == "true",
+    reason="Skip Playwright E2E tests in CI. No live server running."
+)
 
 BASE_URL = "http://localhost:5000" # From student inst.
 
